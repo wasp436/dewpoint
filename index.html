@@ -1,0 +1,1200 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1"
+    />
+    <title>露點溫度計算器 + 空氣線圖定位</title>
+    <style>
+      :root {
+        --bg: #0f1b1f;
+        --panel: #142329;
+        --grid: #24383f;
+        --text: #e7f1ee;
+        --muted: #8fa8a3;
+        --point: #f0a868;
+        --dew: #e0556b;
+        --input-bg: #0c1518;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          "PingFang TC", "Noto Sans TC", "Helvetica Neue", Arial, sans-serif;
+        padding: 16px 12px 32px;
+        max-width: 480px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      h1 {
+        font-size: 19px;
+        font-weight: 700;
+        margin: 4px 0 6px;
+        letter-spacing: 0.01em;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 13.5px;
+        margin: 0 0 16px;
+        line-height: 1.65;
+      }
+      .panel {
+        background: var(--panel);
+        border-radius: 16px;
+        padding: 16px;
+        border: 1px solid var(--grid);
+        margin-bottom: 14px;
+      }
+      .inputs {
+        display: flex;
+        gap: 10px;
+      }
+      .field {
+        flex: 1;
+        min-width: 0;
+      }
+      .field label {
+        display: block;
+        font-size: 12.5px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .field input[type="number"] {
+        width: 100%;
+        background: var(--input-bg);
+        border: 1px solid var(--grid);
+        color: var(--text);
+        font-size: 18px;
+        padding: 14px 12px;
+        border-radius: 10px;
+        outline: none;
+        -webkit-appearance: none;
+      }
+      .field input[type="number"]:focus {
+        border-color: var(--point);
+      }
+      .field input[type="range"] {
+        width: 100%;
+        margin-top: 10px;
+        accent-color: var(--point);
+      }
+      .result {
+        margin-top: 14px;
+        padding: 16px;
+        background: var(--input-bg);
+        border-radius: 12px;
+        border: 1px solid var(--grid);
+      }
+      .result .label {
+        font-size: 13px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .result .value {
+        font-size: 34px;
+        font-weight: 700;
+        color: var(--dew);
+        line-height: 1.1;
+      }
+      .result .value span {
+        font-size: 17px;
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .extra {
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.75;
+      }
+      .extra b {
+        color: var(--text);
+      }
+      .chart-wrap {
+        background: var(--panel);
+        border-radius: 16px;
+        padding: 14px 8px 8px;
+        border: 1px solid var(--grid);
+        margin-bottom: 14px;
+      }
+      svg {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .err {
+        color: var(--dew);
+        font-size: 13px;
+        margin-top: 8px;
+        display: none;
+      }
+      .tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .tab-btn {
+        flex: 1;
+        background: var(--panel);
+        border: 1px solid var(--grid);
+        color: var(--muted);
+        font-size: 13.5px;
+        font-weight: 600;
+        padding: 10px 8px;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .tab-btn.active {
+        background: var(--point);
+        border-color: var(--point);
+        color: #1a1206;
+      }
+      .tab-content {
+        display: none;
+      }
+      .tab-content.active {
+        display: block;
+      }
+      .ratio-row {
+        margin-top: 10px;
+      }
+      .ratio-row label {
+        display: block;
+        font-size: 12.5px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .ratio-row .ratio-inline {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .ratio-row input[type="range"] {
+        flex: 1;
+      }
+      .ratio-row .ratio-val {
+        font-size: 13px;
+        color: var(--text);
+        width: 88px;
+        text-align: right;
+        flex-shrink: 0;
+      }
+      .stream-label {
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--text);
+        margin: 12px 0 8px;
+      }
+      .stream-label:first-child {
+        margin-top: 0;
+      }
+      @media (max-width: 380px) {
+        h1 {
+          font-size: 17px;
+        }
+        .result .value {
+          font-size: 28px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>露點溫度計算器</h1>
+    <p class="sub">
+      輸入空氣的溫度與相對濕度，計算露點溫度，並在空氣線圖上標出狀態點位置。
+    </p>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tabBtnSingle" type="button">
+        單一氣流
+      </button>
+      <button class="tab-btn" id="tabBtnMix" type="button">兩氣流混合</button>
+      <button class="tab-btn" id="tabBtnAhu" type="button">模擬空調箱</button>
+    </div>
+
+    <div class="tab-content active" id="tabSingle">
+      <div class="chart-wrap">
+        <svg
+          id="chart"
+          viewBox="0 0 380 460"
+          xmlns="http://www.w3.org/2000/svg"
+        ></svg>
+      </div>
+
+      <div class="panel">
+        <div class="inputs">
+          <div class="field">
+            <label>乾球溫度 (°C)</label>
+            <input type="number" id="tempInput" value="26" step="0.1" />
+            <input
+              type="range"
+              id="tempRange"
+              value="26"
+              min="-20"
+              max="60"
+              step="0.5"
+            />
+          </div>
+          <div class="field">
+            <label>相對濕度 RH (%)</label>
+            <input
+              type="number"
+              id="rhInput"
+              value="50"
+              step="1"
+              min="1"
+              max="100"
+            />
+            <input
+              type="range"
+              id="rhRange"
+              value="50"
+              min="1"
+              max="100"
+              step="1"
+            />
+          </div>
+        </div>
+        <div class="err" id="errMsg">
+          請輸入有效的溫度與 1–100 之間的相對濕度
+        </div>
+
+        <div class="result">
+          <div class="label">露點溫度</div>
+          <div class="value"><span id="dewValue">--</span><span> °C</span></div>
+        </div>
+        <div class="extra" id="extraInfo"></div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tabMix">
+      <div class="chart-wrap">
+        <svg
+          id="chartMix"
+          viewBox="0 0 380 460"
+          xmlns="http://www.w3.org/2000/svg"
+        ></svg>
+      </div>
+
+      <div class="panel">
+        <div class="stream-label">氣流 A</div>
+        <div class="inputs">
+          <div class="field">
+            <label>乾球溫度 (°C)</label>
+            <input type="number" id="t1Input" value="26" step="0.1" />
+            <input
+              type="range"
+              id="t1Range"
+              value="26"
+              min="-20"
+              max="60"
+              step="0.5"
+            />
+          </div>
+          <div class="field">
+            <label>相對濕度 RH (%)</label>
+            <input
+              type="number"
+              id="rh1Input"
+              value="50"
+              step="1"
+              min="1"
+              max="100"
+            />
+            <input
+              type="range"
+              id="rh1Range"
+              value="50"
+              min="1"
+              max="100"
+              step="1"
+            />
+          </div>
+        </div>
+
+        <div class="stream-label">氣流 B</div>
+        <div class="inputs">
+          <div class="field">
+            <label>乾球溫度 (°C)</label>
+            <input type="number" id="t2Input" value="15" step="0.1" />
+            <input
+              type="range"
+              id="t2Range"
+              value="15"
+              min="-20"
+              max="60"
+              step="0.5"
+            />
+          </div>
+          <div class="field">
+            <label>相對濕度 RH (%)</label>
+            <input
+              type="number"
+              id="rh2Input"
+              value="80"
+              step="1"
+              min="1"
+              max="100"
+            />
+            <input
+              type="range"
+              id="rh2Range"
+              value="80"
+              min="1"
+              max="100"
+              step="1"
+            />
+          </div>
+        </div>
+
+        <div class="ratio-row">
+          <label>混合比例（依質量／風量比）</label>
+          <div class="ratio-inline">
+            <input
+              type="range"
+              id="ratioInput"
+              value="50"
+              min="0"
+              max="100"
+              step="1"
+            />
+            <span class="ratio-val" id="ratioVal">A 50% : B 50%</span>
+          </div>
+        </div>
+
+        <div class="err" id="errMsgMix">
+          請輸入有效的溫度與 1–100 之間的相對濕度
+        </div>
+
+        <div class="result">
+          <div class="label">混合後乾球溫度 ／ 相對濕度</div>
+          <div class="value">
+            <span id="mixTempValue">--</span><span> °C</span>
+          </div>
+          <div class="value" style="font-size: 20px; margin-top: 4px">
+            <span id="mixRhValue">--</span><span> % RH</span>
+          </div>
+        </div>
+        <div class="result">
+          <div class="label">混合後露點溫度</div>
+          <div class="value">
+            <span id="mixDewValue">--</span><span> °C</span>
+          </div>
+        </div>
+        <div class="extra" id="extraInfoMix"></div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tabAhu">
+      <div class="chart-wrap">
+        <svg
+          id="chartAhu"
+          viewBox="0 0 380 460"
+          xmlns="http://www.w3.org/2000/svg"
+        ></svg>
+      </div>
+
+      <div class="panel">
+        <div class="stream-label">現場（回風）狀況</div>
+        <div class="inputs">
+          <div class="field">
+            <label>現場乾球溫度 (°C)</label>
+            <input type="number" id="roomTempInput" value="27" step="0.1" />
+            <input
+              type="range"
+              id="roomTempRange"
+              value="27"
+              min="-20"
+              max="60"
+              step="0.5"
+            />
+          </div>
+          <div class="field">
+            <label>現場相對濕度 RH (%)</label>
+            <input
+              type="number"
+              id="roomRhInput"
+              value="60"
+              step="1"
+              min="1"
+              max="100"
+            />
+            <input
+              type="range"
+              id="roomRhRange"
+              value="60"
+              min="1"
+              max="100"
+              step="1"
+            />
+          </div>
+        </div>
+
+        <div class="stream-label">變頻器</div>
+        <div class="inputs">
+          <div class="field">
+            <label>頻率 (Hz)</label>
+            <input type="number" id="freqInput" value="50" step="1" />
+            <input
+              type="range"
+              id="freqRange"
+              value="50"
+              min="30"
+              max="60"
+              step="1"
+            />
+          </div>
+        </div>
+
+        <div class="stream-label">冰水管排（冷卻盤管）</div>
+        <div class="inputs">
+          <div class="field">
+            <label>冰水閥開度 (%)</label>
+            <input type="number" id="coolPctInput" value="60" step="1" />
+            <input
+              type="range"
+              id="coolPctRange"
+              value="60"
+              min="0"
+              max="100"
+              step="1"
+            />
+          </div>
+        </div>
+
+        <div class="stream-label">熱水管排（再熱盤管）</div>
+        <div class="inputs">
+          <div class="field">
+            <label>熱水閥開度 (%)</label>
+            <input type="number" id="heatPctInput" value="10" step="1" />
+            <input
+              type="range"
+              id="heatPctRange"
+              value="10"
+              min="0"
+              max="100"
+              step="1"
+            />
+          </div>
+        </div>
+
+        <div class="err" id="errMsgAhu">
+          請輸入有效的溫度與 1–100 之間的相對濕度
+        </div>
+
+        <div class="result">
+          <div class="label">出風溫度 ／ 相對濕度（送風狀態）</div>
+          <div class="value">
+            <span id="saTempValue">--</span><span> °C</span>
+          </div>
+          <div class="value" style="font-size: 20px; margin-top: 4px">
+            <span id="saRhValue">--</span><span> % RH</span>
+          </div>
+        </div>
+        <div class="result">
+          <div class="label">現場溫溼度（＝回風狀態，從空間拉回空調箱）</div>
+          <div class="value">
+            <span id="raTempValue">--</span><span> °C</span>
+          </div>
+          <div class="value" style="font-size: 20px; margin-top: 4px">
+            <span id="raRhValue">--</span><span> % RH</span>
+          </div>
+        </div>
+        <div class="result">
+          <div class="label">現場露點溫度</div>
+          <div class="value">
+            <span id="raDewValue">--</span><span> °C</span>
+          </div>
+        </div>
+        <div class="extra" id="extraInfoAhu"></div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const tabs = [
+          { btn: "tabBtnSingle", panel: "tabSingle" },
+          { btn: "tabBtnMix", panel: "tabMix" },
+          { btn: "tabBtnAhu", panel: "tabAhu" },
+        ].map((t) => ({
+          btn: document.getElementById(t.btn),
+          panel: document.getElementById(t.panel),
+        }));
+        tabs.forEach((tab) => {
+          tab.btn.addEventListener("click", function () {
+            tabs.forEach((t) => {
+              t.btn.classList.toggle("active", t === tab);
+              t.panel.classList.toggle("active", t === tab);
+            });
+          });
+        });
+
+        const tempInput = document.getElementById("tempInput");
+        const tempRange = document.getElementById("tempRange");
+        const rhInput = document.getElementById("rhInput");
+        const rhRange = document.getElementById("rhRange");
+        const dewValue = document.getElementById("dewValue");
+        const extraInfo = document.getElementById("extraInfo");
+        const errMsg = document.getElementById("errMsg");
+
+        const t1Input = document.getElementById("t1Input");
+        const t1Range = document.getElementById("t1Range");
+        const rh1Input = document.getElementById("rh1Input");
+        const rh1Range = document.getElementById("rh1Range");
+        const t2Input = document.getElementById("t2Input");
+        const t2Range = document.getElementById("t2Range");
+        const rh2Input = document.getElementById("rh2Input");
+        const rh2Range = document.getElementById("rh2Range");
+        const ratioInput = document.getElementById("ratioInput");
+        const ratioVal = document.getElementById("ratioVal");
+        const mixTempValue = document.getElementById("mixTempValue");
+        const mixRhValue = document.getElementById("mixRhValue");
+        const mixDewValue = document.getElementById("mixDewValue");
+        const extraInfoMix = document.getElementById("extraInfoMix");
+        const errMsgMix = document.getElementById("errMsgMix");
+
+        const roomTempInput = document.getElementById("roomTempInput");
+        const roomTempRange = document.getElementById("roomTempRange");
+        const roomRhInput = document.getElementById("roomRhInput");
+        const roomRhRange = document.getElementById("roomRhRange");
+        const freqInput = document.getElementById("freqInput");
+        const freqRange = document.getElementById("freqRange");
+        const coolPctInput = document.getElementById("coolPctInput");
+        const coolPctRange = document.getElementById("coolPctRange");
+        const heatPctInput = document.getElementById("heatPctInput");
+        const heatPctRange = document.getElementById("heatPctRange");
+        const saTempValue = document.getElementById("saTempValue");
+        const saRhValue = document.getElementById("saRhValue");
+        const raTempValue = document.getElementById("raTempValue");
+        const raRhValue = document.getElementById("raRhValue");
+        const raDewValue = document.getElementById("raDewValue");
+        const extraInfoAhu = document.getElementById("extraInfoAhu");
+        const errMsgAhu = document.getElementById("errMsgAhu");
+
+        function linkRange(numInput, rangeInput, onChange) {
+          numInput.addEventListener("input", function () {
+            if (numInput.value !== "" && !isNaN(parseFloat(numInput.value))) {
+              rangeInput.value = numInput.value;
+            }
+            onChange();
+          });
+          rangeInput.addEventListener("input", function () {
+            numInput.value = rangeInput.value;
+            onChange();
+          });
+        }
+
+        const W = 380,
+          H = 460;
+        const ML = 38,
+          MR = 12,
+          MT = 16,
+          MB = 34;
+        const plotW = W - ML - MR;
+        const plotH = H - MT - MB;
+
+        const Tmin = 0,
+          Tmax = 45;
+        const Wmin = 0,
+          Wmax = 28; // g/kg
+
+        function x(t) {
+          return ML + ((t - Tmin) / (Tmax - Tmin)) * plotW;
+        }
+        function y(w) {
+          return MT + plotH - ((w - Wmin) / (Wmax - Wmin)) * plotH;
+        }
+
+        function psat(t) {
+          return 6.112 * Math.exp((17.62 * t) / (243.12 + t));
+        }
+        function humidityRatio(t, rh) {
+          const P = 1013.25;
+          const pv = rh * psat(t);
+          const w = (0.622 * pv) / (P - pv);
+          return w * 1000;
+        }
+        function dewPointFromW(wTarget) {
+          // binary search for t such that humidityRatio(t,1.0) = wTarget
+          let lo = -20,
+            hi = 60;
+          for (let i = 0; i < 60; i++) {
+            const mid = (lo + hi) / 2;
+            const w = humidityRatio(mid, 1.0);
+            if (w < wTarget) lo = mid;
+            else hi = mid;
+          }
+          return (lo + hi) / 2;
+        }
+
+        function pathFor(rh) {
+          let d = "";
+          for (let t = Tmin; t <= Tmax; t += 0.5) {
+            const w = humidityRatio(t, rh);
+            if (w > Wmax * 1.05) continue;
+            const px = x(t),
+              py = y(w);
+            d +=
+              (d === "" ? "M" : "L") +
+              px.toFixed(1) +
+              "," +
+              py.toFixed(1) +
+              " ";
+          }
+          return d;
+        }
+
+        function enthalpy(t, w) {
+          // w in g/kg dry air, h in kJ/kg dry air
+          return 1.006 * t + (w / 1000) * (2501 + 1.86 * t);
+        }
+
+        const ns = "http://www.w3.org/2000/svg";
+        function el(tag, attrs) {
+          const e = document.createElementNS(ns, tag);
+          for (const k in attrs) e.setAttribute(k, attrs[k]);
+          return e;
+        }
+
+        function createChart(svg) {
+          // static background elements built once
+          const staticGroup = el("g", { id: "static" });
+          // grid
+          for (let t = Tmin; t <= Tmax; t += 5) {
+            staticGroup.appendChild(
+              el("line", {
+                x1: x(t),
+                y1: MT,
+                x2: x(t),
+                y2: MT + plotH,
+                stroke: "#24383f",
+                "stroke-width": 0.6,
+              }),
+            );
+            if (t % 10 === 0) {
+              const lbl = el("text", {
+                x: x(t),
+                y: MT + plotH + 14,
+                fill: "#8fa8a3",
+                "font-size": 8,
+                "text-anchor": "middle",
+              });
+              lbl.textContent = t;
+              staticGroup.appendChild(lbl);
+            }
+          }
+          for (let w = Wmin; w <= Wmax; w += 4) {
+            staticGroup.appendChild(
+              el("line", {
+                x1: ML,
+                y1: y(w),
+                x2: ML + plotW,
+                y2: y(w),
+                stroke: "#24383f",
+                "stroke-width": 0.6,
+              }),
+            );
+            const lbl = el("text", {
+              x: ML - 5,
+              y: y(w) + 3,
+              fill: "#8fa8a3",
+              "font-size": 8,
+              "text-anchor": "end",
+            });
+            lbl.textContent = w;
+            staticGroup.appendChild(lbl);
+          }
+          const xt = el("text", {
+            x: ML + plotW / 2,
+            y: H - 6,
+            fill: "#e7f1ee",
+            "font-size": 9,
+            "text-anchor": "middle",
+          });
+          xt.textContent = "乾球溫度 (°C)";
+          staticGroup.appendChild(xt);
+          const yt = el("text", {
+            x: 10,
+            y: MT + plotH / 2,
+            fill: "#e7f1ee",
+            "font-size": 9,
+            "text-anchor": "middle",
+            transform: "rotate(-90 10 " + (MT + plotH / 2) + ")",
+          });
+          yt.textContent = "含濕量 (g/kg)";
+          staticGroup.appendChild(yt);
+
+          // RH dashed curves
+          [0.2, 0.4, 0.6, 0.8].forEach((rh) => {
+            const path = el("path", {
+              d: pathFor(rh),
+              fill: "none",
+              stroke: "#3a5a62",
+              "stroke-width": 0.9,
+              "stroke-dasharray": "3,3",
+            });
+            staticGroup.appendChild(path);
+            for (let t = Tmax; t >= Tmin; t -= 0.5) {
+              const w = humidityRatio(t, rh);
+              if (w <= Wmax * 0.98) {
+                const lbl = el("text", {
+                  x: x(t) + 3,
+                  y: y(w) - 3,
+                  fill: "#5c7a80",
+                  "font-size": 7.5,
+                });
+                lbl.textContent = Math.round(rh * 100) + "%";
+                staticGroup.appendChild(lbl);
+                break;
+              }
+            }
+          });
+
+          // saturation curve
+          const satPath = el("path", {
+            d: pathFor(1.0),
+            fill: "none",
+            stroke: "#e7f1ee",
+            "stroke-width": 1.6,
+          });
+          staticGroup.appendChild(satPath);
+          const satLabel = el("text", {
+            x: x(26),
+            y: y(humidityRatio(26, 1.0)) - 8,
+            fill: "#e7f1ee",
+            "font-size": 8,
+            "font-weight": "600",
+          });
+          satLabel.textContent = "RH 100%";
+          staticGroup.appendChild(satLabel);
+
+          svg.appendChild(staticGroup);
+
+          // dynamic group (cleared and redrawn on each update)
+          let dynGroup = el("g", { id: "dynamic" });
+          svg.appendChild(dynGroup);
+
+          function clearDyn() {
+            svg.removeChild(dynGroup);
+            dynGroup = el("g", { id: "dynamic" });
+            svg.appendChild(dynGroup);
+          }
+
+          function point(px, py, color, label, labelDx, labelDy, sub) {
+            const g = el("g", {});
+            g.appendChild(
+              el("circle", {
+                cx: px,
+                cy: py,
+                r: 3.5,
+                fill: color,
+                stroke: "#0f1b1f",
+                "stroke-width": 1.2,
+              }),
+            );
+            const t1 = el("text", {
+              x: px + labelDx,
+              y: py + labelDy,
+              fill: "#e7f1ee",
+              "font-size": 9,
+              "font-weight": "700",
+            });
+            t1.textContent = label;
+            g.appendChild(t1);
+            if (sub) {
+              const t2 = el("text", {
+                x: px + labelDx,
+                y: py + labelDy + 11,
+                fill: "#8fa8a3",
+                "font-size": 8,
+              });
+              t2.textContent = sub;
+              g.appendChild(t2);
+            }
+            dynGroup.appendChild(g);
+          }
+
+          function line(x1, y1, x2, y2, color, dash) {
+            dynGroup.appendChild(
+              el("line", {
+                x1,
+                y1,
+                x2,
+                y2,
+                stroke: color,
+                "stroke-width": 1,
+                "stroke-dasharray": dash || "none",
+              }),
+            );
+          }
+
+          return { clearDyn, point, line };
+        }
+
+        const chart1 = createChart(document.getElementById("chart"));
+        const chart2 = createChart(document.getElementById("chartMix"));
+        const chart3 = createChart(document.getElementById("chartAhu"));
+
+        function update() {
+          const t = parseFloat(tempInput.value);
+          const rhPct = parseFloat(rhInput.value);
+
+          if (
+            isNaN(t) ||
+            isNaN(rhPct) ||
+            rhPct <= 0 ||
+            rhPct > 100 ||
+            t < -20 ||
+            t > 60
+          ) {
+            errMsg.style.display = "block";
+            dewValue.textContent = "--";
+            extraInfo.textContent = "";
+            chart1.clearDyn();
+            return;
+          }
+          errMsg.style.display = "none";
+
+          const rh = rhPct / 100;
+          const w = humidityRatio(t, rh);
+          const tDew = dewPointFromW(w);
+
+          dewValue.textContent = tDew.toFixed(1);
+          extraInfo.innerHTML = `目前狀態：<b>${t}°C, RH ${rhPct}%</b>　→　含濕量約 <b>${w.toFixed(2)} g/kg</b>　→　露點溫度 <b>${tDew.toFixed(1)}°C</b><br>任何表面溫度低於 ${tDew.toFixed(1)}°C，旁邊空氣就會在該表面結露。`;
+
+          chart1.clearDyn();
+
+          const clampT = Math.max(Tmin, Math.min(Tmax, t));
+          const clampW = Math.max(Wmin, Math.min(Wmax, w));
+          const clampTd = Math.max(Tmin, Math.min(Tmax, tDew));
+
+          const Ax = x(clampT),
+            Ay = y(clampW);
+          const Dx = x(clampTd),
+            Dy = y(clampW);
+
+          chart1.line(Ax, Ay, Dx, Dy, "#e0556b", "2,2");
+
+          chart1.point(
+            Ax,
+            Ay,
+            "#f0a868",
+            "A 目前狀態",
+            Ax > W / 2 ? -68 : 8,
+            -8,
+            `${t}°C, RH ${rhPct}%`,
+          );
+          chart1.point(
+            Dx,
+            Dy,
+            "#e0556b",
+            "D 露點",
+            Dx > 70 ? -38 : 8,
+            16,
+            `${tDew.toFixed(1)}°C`,
+          );
+        }
+
+        function updateMix() {
+          const t1 = parseFloat(t1Input.value);
+          const rh1Pct = parseFloat(rh1Input.value);
+          const t2 = parseFloat(t2Input.value);
+          const rh2Pct = parseFloat(rh2Input.value);
+          const ratioA = parseFloat(ratioInput.value);
+
+          ratioVal.textContent = `A ${ratioA}% : B ${100 - ratioA}%`;
+
+          const valid =
+            !isNaN(t1) &&
+            !isNaN(rh1Pct) &&
+            rh1Pct > 0 &&
+            rh1Pct <= 100 &&
+            t1 >= -20 &&
+            t1 <= 60 &&
+            !isNaN(t2) &&
+            !isNaN(rh2Pct) &&
+            rh2Pct > 0 &&
+            rh2Pct <= 100 &&
+            t2 >= -20 &&
+            t2 <= 60;
+
+          if (!valid) {
+            errMsgMix.style.display = "block";
+            mixTempValue.textContent = "--";
+            mixRhValue.textContent = "--";
+            mixDewValue.textContent = "--";
+            extraInfoMix.textContent = "";
+            chart2.clearDyn();
+            return;
+          }
+          errMsgMix.style.display = "none";
+
+          const fA = ratioA / 100;
+          const fB = 1 - fA;
+
+          const w1 = humidityRatio(t1, rh1Pct / 100);
+          const w2 = humidityRatio(t2, rh2Pct / 100);
+          const h1 = enthalpy(t1, w1);
+          const h2 = enthalpy(t2, w2);
+
+          const wMix = fA * w1 + fB * w2;
+          const hMix = fA * h1 + fB * h2;
+          const tMix =
+            (hMix - 2501 * (wMix / 1000)) / (1.006 + 1.86 * (wMix / 1000));
+
+          const wMixKg = wMix / 1000;
+          const P = 1013.25;
+          const pvMix = (wMixKg * P) / (0.622 + wMixKg);
+          let rhMix = (pvMix / psat(tMix)) * 100;
+          rhMix = Math.max(0, Math.min(100, rhMix));
+
+          const tDewMix = dewPointFromW(wMix);
+
+          mixTempValue.textContent = tMix.toFixed(1);
+          mixRhValue.textContent = rhMix.toFixed(0);
+          mixDewValue.textContent = tDewMix.toFixed(1);
+          extraInfoMix.innerHTML = `氣流 A：<b>${t1}°C, RH ${rh1Pct}%</b>　氣流 B：<b>${t2}°C, RH ${rh2Pct}%</b>（比例 A:B = ${ratioA}:${100 - ratioA}）<br>混合後：<b>${tMix.toFixed(1)}°C, RH ${rhMix.toFixed(0)}%</b>　→　露點溫度 <b>${tDewMix.toFixed(1)}°C</b><br>任何表面溫度低於 ${tDewMix.toFixed(1)}°C，旁邊空氣就會在該表面結露。`;
+
+          chart2.clearDyn();
+
+          const clampT1 = Math.max(Tmin, Math.min(Tmax, t1));
+          const clampW1 = Math.max(Wmin, Math.min(Wmax, w1));
+          const clampT2 = Math.max(Tmin, Math.min(Tmax, t2));
+          const clampW2 = Math.max(Wmin, Math.min(Wmax, w2));
+          const clampTM = Math.max(Tmin, Math.min(Tmax, tMix));
+          const clampWM = Math.max(Wmin, Math.min(Wmax, wMix));
+          const clampTd = Math.max(Tmin, Math.min(Tmax, tDewMix));
+
+          const Ax = x(clampT1),
+            Ay = y(clampW1);
+          const Bx = x(clampT2),
+            By = y(clampW2);
+          const Mx = x(clampTM),
+            My = y(clampWM);
+          const Dx = x(clampTd),
+            Dy = y(clampWM);
+
+          chart2.line(Ax, Ay, Bx, By, "#5c7a80", "3,3");
+          chart2.line(Mx, My, Dx, Dy, "#e0556b", "2,2");
+
+          chart2.point(
+            Ax,
+            Ay,
+            "#f0a868",
+            "A",
+            Ax > W / 2 ? -30 : 8,
+            -8,
+            `${t1}°C, ${rh1Pct}%`,
+          );
+          chart2.point(
+            Bx,
+            By,
+            "#f0a868",
+            "B",
+            Bx > W / 2 ? -30 : 8,
+            -8,
+            `${t2}°C, ${rh2Pct}%`,
+          );
+          chart2.point(
+            Mx,
+            My,
+            "#9ad0c2",
+            "M 混合",
+            Mx > W / 2 ? -50 : 8,
+            -8,
+            `${tMix.toFixed(1)}°C, ${rhMix.toFixed(0)}%`,
+          );
+          chart2.point(
+            Dx,
+            Dy,
+            "#e0556b",
+            "D 露點",
+            Dx > 70 ? -38 : 8,
+            16,
+            `${tDewMix.toFixed(1)}°C`,
+          );
+        }
+
+        function updateAhu() {
+          const tRoom = parseFloat(roomTempInput.value);
+          const rhRoomPct = parseFloat(roomRhInput.value);
+          const freq = parseFloat(freqInput.value);
+          const coolPct = parseFloat(coolPctInput.value);
+          const heatPct = parseFloat(heatPctInput.value);
+
+          const valid =
+            !isNaN(tRoom) &&
+            !isNaN(rhRoomPct) &&
+            rhRoomPct > 0 &&
+            rhRoomPct <= 100 &&
+            tRoom >= -20 &&
+            tRoom <= 60 &&
+            !isNaN(freq) &&
+            freq > 0 &&
+            !isNaN(coolPct) &&
+            coolPct >= 0 &&
+            coolPct <= 100 &&
+            !isNaN(heatPct) &&
+            heatPct >= 0 &&
+            heatPct <= 100;
+
+          if (!valid) {
+            errMsgAhu.style.display = "block";
+            saTempValue.textContent = "--";
+            saRhValue.textContent = "--";
+            raTempValue.textContent = "--";
+            raRhValue.textContent = "--";
+            raDewValue.textContent = "--";
+            extraInfoAhu.textContent = "";
+            chart3.clearDyn();
+            return;
+          }
+          errMsgAhu.style.display = "none";
+
+          const wRoom = humidityRatio(tRoom, rhRoomPct / 100);
+          const tDewRoom = dewPointFromW(wRoom);
+
+          // coil bypass factor: rated ~0.2 at 50Hz, scales with airflow (higher
+          // frequency = higher face velocity = less air/coil contact time)
+          const BF0 = 0.2;
+          const bf = Math.max(0.03, Math.min(0.95, BF0 * (freq / 50)));
+
+          // assumed fixed chilled-water apparatus dew point at full valve open
+          const adpT = 7;
+          const adpW = humidityRatio(adpT, 1.0);
+
+          // cooling valve % modulates how far the leaving state moves from
+          // RA toward the full-flow bypass-factor state (0% = no cooling)
+          const fCool = coolPct / 100;
+          const tCcFull = adpT + bf * (tRoom - adpT);
+          const wCcFull = adpW + bf * (wRoom - adpW);
+          const tCc = tRoom + fCool * (tCcFull - tRoom);
+          const wCc = wRoom + fCool * (wCcFull - wRoom);
+
+          const P = 1013.25;
+          const wCcKg = wCc / 1000;
+          const pvCc = (wCcKg * P) / (0.622 + wCcKg);
+          const rhCc = Math.max(0, Math.min(100, (pvCc / psat(tCc)) * 100));
+
+          // hot water coil only reheats (sensible, no moisture change);
+          // heating valve % scales toward an assumed max coil capacity of 20°C rise
+          const MAX_REHEAT_DT = 20;
+          const fHeat = heatPct / 100;
+          const tSa = tCc + fHeat * MAX_REHEAT_DT;
+          const wSa = wCc;
+          const wSaKg = wSa / 1000;
+          const pvSa = (wSaKg * P) / (0.622 + wSaKg);
+          const rhSa = Math.max(0, Math.min(100, (pvSa / psat(tSa)) * 100));
+
+          saTempValue.textContent = tSa.toFixed(1);
+          saRhValue.textContent = rhSa.toFixed(0);
+          raTempValue.textContent = tRoom.toFixed(1);
+          raRhValue.textContent = rhRoomPct.toFixed(0);
+          raDewValue.textContent = tDewRoom.toFixed(1);
+
+          extraInfoAhu.innerHTML = `回風（現場）：<b>${tRoom}°C, RH ${rhRoomPct}%</b>　→　冰水閥 ${coolPct}% 開度後：<b>${tCc.toFixed(1)}°C, RH ${rhCc.toFixed(0)}%</b>（頻率 ${freq}Hz，接觸係數 BF ${bf.toFixed(2)}）　→　熱水閥 ${heatPct}% 開度後送風：<b>${tSa.toFixed(1)}°C, RH ${rhSa.toFixed(0)}%</b><br>現場露點溫度 <b>${tDewRoom.toFixed(1)}°C</b>（假設冰水管排滿水量時機面露點約 ${adpT}°C，熱水管排滿載溫升約 ${MAX_REHEAT_DT}°C）`;
+
+          chart3.clearDyn();
+
+          const clampRaT = Math.max(Tmin, Math.min(Tmax, tRoom));
+          const clampRaW = Math.max(Wmin, Math.min(Wmax, wRoom));
+          const clampAdpT = Math.max(Tmin, Math.min(Tmax, adpT));
+          const clampAdpW = Math.max(Wmin, Math.min(Wmax, adpW));
+          const clampCcT = Math.max(Tmin, Math.min(Tmax, tCc));
+          const clampCcW = Math.max(Wmin, Math.min(Wmax, wCc));
+          const clampSaT = Math.max(Tmin, Math.min(Tmax, tSa));
+          const clampSaW = Math.max(Wmin, Math.min(Wmax, wSa));
+          const clampTd = Math.max(Tmin, Math.min(Tmax, tDewRoom));
+
+          const RAx = x(clampRaT),
+            RAy = y(clampRaW);
+          const ADPx = x(clampAdpT),
+            ADPy = y(clampAdpW);
+          const CCx = x(clampCcT),
+            CCy = y(clampCcW);
+          const SAx = x(clampSaT),
+            SAy = y(clampSaW);
+          const Dx = x(clampTd),
+            Dy = y(clampRaW);
+
+          chart3.line(RAx, RAy, ADPx, ADPy, "#3a5a62", "3,3");
+          chart3.line(CCx, CCy, SAx, SAy, "#e8a33d");
+          chart3.line(RAx, RAy, Dx, Dy, "#e0556b", "2,2");
+
+          chart3.point(
+            RAx,
+            RAy,
+            "#f0a868",
+            "RA 回風",
+            RAx > W / 2 ? -50 : 8,
+            -8,
+            `${tRoom}°C, ${rhRoomPct}%`,
+          );
+          chart3.point(
+            ADPx,
+            ADPy,
+            "#5c7a80",
+            "ADP",
+            ADPx > W / 2 ? -30 : 8,
+            -8,
+            `${adpT.toFixed(1)}°C`,
+          );
+          chart3.point(
+            CCx,
+            CCy,
+            "#9ad0c2",
+            "CC 冷卻後",
+            CCx > W / 2 ? -50 : 8,
+            16,
+            `${tCc.toFixed(1)}°C, ${rhCc.toFixed(0)}%`,
+          );
+          chart3.point(
+            SAx,
+            SAy,
+            "#7fd1ae",
+            "SA 送風",
+            SAx > W / 2 ? -40 : 8,
+            -20,
+            `${tSa.toFixed(1)}°C, ${rhSa.toFixed(0)}%`,
+          );
+          chart3.point(
+            Dx,
+            Dy,
+            "#e0556b",
+            "D 露點",
+            Dx > 70 ? -38 : 8,
+            30,
+            `${tDewRoom.toFixed(1)}°C`,
+          );
+        }
+
+        linkRange(tempInput, tempRange, update);
+        linkRange(rhInput, rhRange, update);
+        update();
+
+        linkRange(t1Input, t1Range, updateMix);
+        linkRange(rh1Input, rh1Range, updateMix);
+        linkRange(t2Input, t2Range, updateMix);
+        linkRange(rh2Input, rh2Range, updateMix);
+        ratioInput.addEventListener("input", updateMix);
+        updateMix();
+
+        linkRange(roomTempInput, roomTempRange, updateAhu);
+        linkRange(roomRhInput, roomRhRange, updateAhu);
+        linkRange(freqInput, freqRange, updateAhu);
+        linkRange(coolPctInput, coolPctRange, updateAhu);
+        linkRange(heatPctInput, heatPctRange, updateAhu);
+        updateAhu();
+      })();
+    </script>
+  </body>
+</html>
