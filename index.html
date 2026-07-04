@@ -189,6 +189,9 @@
         flex-shrink: 0;
       }
       .stream-label {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
         font-size: 12.5px;
         font-weight: 700;
         color: var(--text);
@@ -197,12 +200,77 @@
       .stream-label:first-child {
         margin-top: 0;
       }
+      .stream-dew {
+        font-size: 12px;
+        font-weight: 400;
+        color: var(--dew);
+      }
+      .stream-dew span {
+        font-weight: 700;
+      }
+      .panel-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 10px;
+      }
+      .reset-btn {
+        background: none;
+        border: 1px solid var(--grid);
+        color: var(--muted);
+        font-size: 12.5px;
+        font-weight: 600;
+        padding: 7px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      .reset-btn:hover {
+        border-color: var(--point);
+        color: var(--point);
+      }
+      .reset-btn:active {
+        transform: scale(0.97);
+      }
       @media (max-width: 380px) {
         h1 {
           font-size: 17px;
         }
         .result .value {
           font-size: 28px;
+        }
+      }
+
+      /* 電腦版排版：圖表與輸入欄並排，取代手機版的上下堆疊 */
+      @media (min-width: 860px) {
+        body {
+          max-width: 1080px;
+          padding: 32px 40px 56px;
+        }
+        h1 {
+          font-size: 26px;
+        }
+        .sub {
+          font-size: 14.5px;
+          max-width: 720px;
+        }
+        .tabs {
+          max-width: 480px;
+        }
+        .tab-content.active {
+          display: grid;
+          grid-template-columns: minmax(320px, 420px) 1fr;
+          align-items: start;
+          gap: 24px;
+        }
+        .chart-wrap {
+          position: sticky;
+          top: 24px;
+          margin-bottom: 0;
+        }
+        .panel {
+          margin-bottom: 0;
+        }
+        .stream-label {
+          margin-top: 18px;
         }
       }
     </style>
@@ -231,6 +299,11 @@
       </div>
 
       <div class="panel">
+        <div class="panel-actions">
+          <button type="button" class="reset-btn" id="resetSingleBtn">
+            重設為預設值
+          </button>
+        </div>
         <div class="inputs">
           <div class="field">
             <label>乾球溫度 (°C)</label>
@@ -286,7 +359,15 @@
       </div>
 
       <div class="panel">
-        <div class="stream-label">氣流 A</div>
+        <div class="panel-actions">
+          <button type="button" class="reset-btn" id="resetMixBtn">
+            重設為預設值
+          </button>
+        </div>
+        <div class="stream-label">
+          氣流 A
+          <span class="stream-dew">露點 <span id="dew1Value">--</span>°C</span>
+        </div>
         <div class="inputs">
           <div class="field">
             <label>乾球溫度 (°C)</label>
@@ -305,7 +386,7 @@
             <input
               type="number"
               id="rh1Input"
-              value="50"
+              value="60"
               step="1"
               min="1"
               max="100"
@@ -313,7 +394,7 @@
             <input
               type="range"
               id="rh1Range"
-              value="50"
+              value="60"
               min="1"
               max="100"
               step="1"
@@ -321,15 +402,18 @@
           </div>
         </div>
 
-        <div class="stream-label">氣流 B</div>
+        <div class="stream-label">
+          氣流 B
+          <span class="stream-dew">露點 <span id="dew2Value">--</span>°C</span>
+        </div>
         <div class="inputs">
           <div class="field">
             <label>乾球溫度 (°C)</label>
-            <input type="number" id="t2Input" value="15" step="0.1" />
+            <input type="number" id="t2Input" value="35" step="0.1" />
             <input
               type="range"
               id="t2Range"
-              value="15"
+              value="35"
               min="-20"
               max="60"
               step="0.5"
@@ -340,7 +424,7 @@
             <input
               type="number"
               id="rh2Input"
-              value="80"
+              value="70"
               step="1"
               min="1"
               max="100"
@@ -348,7 +432,7 @@
             <input
               type="range"
               id="rh2Range"
-              value="80"
+              value="70"
               min="1"
               max="100"
               step="1"
@@ -362,12 +446,12 @@
             <input
               type="range"
               id="ratioInput"
-              value="50"
+              value="80"
               min="0"
               max="100"
               step="1"
             />
-            <span class="ratio-val" id="ratioVal">A 50% : B 50%</span>
+            <span class="ratio-val" id="ratioVal">A 80% : B 20%</span>
           </div>
         </div>
 
@@ -404,6 +488,11 @@
       </div>
 
       <div class="panel">
+        <div class="panel-actions">
+          <button type="button" class="reset-btn" id="resetAhuBtn">
+            重設為預設值
+          </button>
+        </div>
         <div class="stream-label">現場（回風）狀況</div>
         <div class="inputs">
           <div class="field">
@@ -556,6 +645,8 @@
         const rh2Range = document.getElementById("rh2Range");
         const ratioInput = document.getElementById("ratioInput");
         const ratioVal = document.getElementById("ratioVal");
+        const dew1Value = document.getElementById("dew1Value");
+        const dew2Value = document.getElementById("dew2Value");
         const mixTempValue = document.getElementById("mixTempValue");
         const mixRhValue = document.getElementById("mixRhValue");
         const mixDewValue = document.getElementById("mixDewValue");
@@ -929,6 +1020,8 @@
 
           if (!valid) {
             errMsgMix.style.display = "block";
+            dew1Value.textContent = "--";
+            dew2Value.textContent = "--";
             mixTempValue.textContent = "--";
             mixRhValue.textContent = "--";
             mixDewValue.textContent = "--";
@@ -945,6 +1038,10 @@
           const w2 = humidityRatio(t2, rh2Pct / 100);
           const h1 = enthalpy(t1, w1);
           const h2 = enthalpy(t2, w2);
+          const tDew1 = dewPointFromW(w1);
+          const tDew2 = dewPointFromW(w2);
+          dew1Value.textContent = tDew1.toFixed(1);
+          dew2Value.textContent = tDew2.toFixed(1);
 
           const wMix = fA * w1 + fB * w2;
           const hMix = fA * h1 + fB * h2;
@@ -1194,6 +1291,41 @@
         linkRange(coolPctInput, coolPctRange, updateAhu);
         linkRange(heatPctInput, heatPctRange, updateAhu);
         updateAhu();
+
+        function setVal(numInput, rangeInput, val) {
+          numInput.value = val;
+          rangeInput.value = val;
+        }
+
+        document
+          .getElementById("resetSingleBtn")
+          .addEventListener("click", function () {
+            setVal(tempInput, tempRange, 26);
+            setVal(rhInput, rhRange, 50);
+            update();
+          });
+
+        document
+          .getElementById("resetMixBtn")
+          .addEventListener("click", function () {
+            setVal(t1Input, t1Range, 26);
+            setVal(rh1Input, rh1Range, 60);
+            setVal(t2Input, t2Range, 35);
+            setVal(rh2Input, rh2Range, 70);
+            ratioInput.value = 80;
+            updateMix();
+          });
+
+        document
+          .getElementById("resetAhuBtn")
+          .addEventListener("click", function () {
+            setVal(roomTempInput, roomTempRange, 27);
+            setVal(roomRhInput, roomRhRange, 60);
+            setVal(freqInput, freqRange, 50);
+            setVal(coolPctInput, coolPctRange, 60);
+            setVal(heatPctInput, heatPctRange, 10);
+            updateAhu();
+          });
       })();
     </script>
   </body>
