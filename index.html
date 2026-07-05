@@ -576,6 +576,21 @@
           </div>
         </div>
 
+        <div class="ratio-row">
+          <label>送風對現場的影響比例（換氣程度）</label>
+          <div class="ratio-inline">
+            <input
+              type="range"
+              id="roomMixInput"
+              value="30"
+              min="0"
+              max="100"
+              step="1"
+            />
+            <span class="ratio-val" id="roomMixVal">30%</span>
+          </div>
+        </div>
+
         <div class="err" id="errMsgAhu">
           請輸入有效的溫度與 1–100 之間的相對濕度
         </div>
@@ -590,7 +605,7 @@
           </div>
         </div>
         <div class="result">
-          <div class="label">現場溫溼度（＝回風狀態，從空間拉回空調箱）</div>
+          <div class="label">現場溫溼度（送風進入現場後，混合後的新狀態）</div>
           <div class="value">
             <span id="raTempValue">--</span><span> °C</span>
           </div>
@@ -599,7 +614,7 @@
           </div>
         </div>
         <div class="result">
-          <div class="label">現場露點溫度</div>
+          <div class="label">現場露點溫度（混合後）</div>
           <div class="value">
             <span id="raDewValue">--</span><span> °C</span>
           </div>
@@ -663,6 +678,8 @@
         const coolPctRange = document.getElementById("coolPctRange");
         const heatPctInput = document.getElementById("heatPctInput");
         const heatPctRange = document.getElementById("heatPctRange");
+        const roomMixInput = document.getElementById("roomMixInput");
+        const roomMixVal = document.getElementById("roomMixVal");
         const saTempValue = document.getElementById("saTempValue");
         const saRhValue = document.getElementById("saRhValue");
         const raTempValue = document.getElementById("raTempValue");
@@ -873,11 +890,24 @@
           // dynamic group (cleared and redrawn on each update)
           let dynGroup = el("g", { id: "dynamic" });
           svg.appendChild(dynGroup);
+          // bounding boxes of labels already placed this frame, so later
+          // labels can nudge away instead of overlapping them
+          let placedLabels = [];
 
           function clearDyn() {
             svg.removeChild(dynGroup);
             dynGroup = el("g", { id: "dynamic" });
             svg.appendChild(dynGroup);
+            placedLabels = [];
+          }
+
+          function rectsOverlap(a, b) {
+            return !(
+              a.x + a.w < b.x ||
+              b.x + b.w < a.x ||
+              a.y + a.h < b.y ||
+              b.y + b.h < a.y
+            );
           }
 
           function point(px, py, color, label, labelDx, labelDy, sub) {
@@ -892,6 +922,11 @@
                 "stroke-width": 1.2,
               }),
             );
+
+            // text lives in its own group so getBBox() below measures just
+            // the label, not the label-plus-circle span (which would keep
+            // growing every time the label gets nudged away from its point)
+            const labelGroup = el("g", {});
             const t1 = el("text", {
               x: px + labelDx,
               y: py + labelDy,
@@ -900,18 +935,50 @@
               "font-weight": "700",
             });
             t1.textContent = label;
-            g.appendChild(t1);
+            labelGroup.appendChild(t1);
+            let t2 = null;
             if (sub) {
-              const t2 = el("text", {
+              t2 = el("text", {
                 x: px + labelDx,
                 y: py + labelDy + 11,
                 fill: "#8fa8a3",
                 "font-size": 8,
               });
               t2.textContent = sub;
-              g.appendChild(t2);
+              labelGroup.appendChild(t2);
             }
+            g.appendChild(labelGroup);
             dynGroup.appendChild(g);
+
+            // if this label's box collides with an already-placed one,
+            // nudge it down step by step until it clears (or give up)
+            let rect = null;
+            for (let i = 0; i < 8; i++) {
+              const bbox = labelGroup.getBBox();
+              rect = {
+                x: bbox.x - 2,
+                y: bbox.y - 2,
+                w: bbox.width + 4,
+                h: bbox.height + 4,
+              };
+              const collides = placedLabels.some((r) => rectsOverlap(rect, r));
+              if (!collides || i === 7) break;
+              const dy = (i + 1) * 12;
+              t1.setAttribute("y", py + labelDy + dy);
+              if (t2) t2.setAttribute("y", py + labelDy + 11 + dy);
+            }
+            placedLabels.push(rect);
+
+            const bg = el("rect", {
+              x: rect.x,
+              y: rect.y,
+              width: rect.w,
+              height: rect.h,
+              rx: 3,
+              fill: "#0f1b1f",
+              "fill-opacity": 0.8,
+            });
+            labelGroup.insertBefore(bg, t1);
           }
 
           function line(x1, y1, x2, y2, color, dash) {
@@ -1192,13 +1259,32 @@
           const pvSa = (wSaKg * P) / (0.622 + wSaKg);
           const rhSa = Math.max(0, Math.min(100, (pvSa / psat(tSa)) * 100));
 
+          // supply air mixes into the room; roomMix% is how far the room
+          // moves from its old state toward the SA state (0% = no change,
+          // 100% = room fully reaches SA condition)
+          const fRoomMix = parseFloat(roomMixInput.value) / 100;
+          roomMixVal.textContent = (fRoomMix * 100).toFixed(0) + "%";
+
+          const hRoomOld = enthalpy(tRoom, wRoom);
+          const hSa = enthalpy(tSa, wSa);
+          const wRoomNew = wRoom + fRoomMix * (wSa - wRoom);
+          const hRoomNew = hRoomOld + fRoomMix * (hSa - hRoomOld);
+          const tRoomNew =
+            (hRoomNew - 2501 * (wRoomNew / 1000)) /
+            (1.006 + 1.86 * (wRoomNew / 1000));
+          const wRoomNewKg = wRoomNew / 1000;
+          const pvRoomNew = (wRoomNewKg * P) / (0.622 + wRoomNewKg);
+          let rhRoomNew = (pvRoomNew / psat(tRoomNew)) * 100;
+          rhRoomNew = Math.max(0, Math.min(100, rhRoomNew));
+          const tDewRoomNew = dewPointFromW(wRoomNew);
+
           saTempValue.textContent = tSa.toFixed(1);
           saRhValue.textContent = rhSa.toFixed(0);
-          raTempValue.textContent = tRoom.toFixed(1);
-          raRhValue.textContent = rhRoomPct.toFixed(0);
-          raDewValue.textContent = tDewRoom.toFixed(1);
+          raTempValue.textContent = tRoomNew.toFixed(1);
+          raRhValue.textContent = rhRoomNew.toFixed(0);
+          raDewValue.textContent = tDewRoomNew.toFixed(1);
 
-          extraInfoAhu.innerHTML = `回風（現場）：<b>${tRoom}°C, RH ${rhRoomPct}%</b>　→　冰水閥 ${coolPct}% 開度後：<b>${tCc.toFixed(1)}°C, RH ${rhCc.toFixed(0)}%</b>（頻率 ${freq}Hz，接觸係數 BF ${bf.toFixed(2)}）　→　熱水閥 ${heatPct}% 開度後送風：<b>${tSa.toFixed(1)}°C, RH ${rhSa.toFixed(0)}%</b><br>現場露點溫度 <b>${tDewRoom.toFixed(1)}°C</b>（假設冰水管排滿水量時機面露點約 ${adpT}°C，熱水管排滿載溫升約 ${MAX_REHEAT_DT}°C）`;
+          extraInfoAhu.innerHTML = `回風（現場舊狀態）：<b>${tRoom}°C, RH ${rhRoomPct}%</b>　→　冰水閥 ${coolPct}% 開度後：<b>${tCc.toFixed(1)}°C, RH ${rhCc.toFixed(0)}%</b>（頻率 ${freq}Hz，接觸係數 BF ${bf.toFixed(2)}）　→　熱水閥 ${heatPct}% 開度後送風：<b>${tSa.toFixed(1)}°C, RH ${rhSa.toFixed(0)}%</b><br>送風以 ${(fRoomMix * 100).toFixed(0)}% 影響比例混入現場後，現場新狀態：<b>${tRoomNew.toFixed(1)}°C, RH ${rhRoomNew.toFixed(0)}%</b>　→　現場露點溫度 <b>${tDewRoomNew.toFixed(1)}°C</b>（假設冰水管排滿水量時機面露點約 ${adpT}°C，熱水管排滿載溫升約 ${MAX_REHEAT_DT}°C）`;
 
           chart3.clearDyn();
 
@@ -1210,7 +1296,9 @@
           const clampCcW = Math.max(Wmin, Math.min(Wmax, wCc));
           const clampSaT = Math.max(Tmin, Math.min(Tmax, tSa));
           const clampSaW = Math.max(Wmin, Math.min(Wmax, wSa));
-          const clampTd = Math.max(Tmin, Math.min(Tmax, tDewRoom));
+          const clampRnT = Math.max(Tmin, Math.min(Tmax, tRoomNew));
+          const clampRnW = Math.max(Wmin, Math.min(Wmax, wRoomNew));
+          const clampTd = Math.max(Tmin, Math.min(Tmax, tDewRoomNew));
 
           const RAx = x(clampRaT),
             RAy = y(clampRaW);
@@ -1220,12 +1308,15 @@
             CCy = y(clampCcW);
           const SAx = x(clampSaT),
             SAy = y(clampSaW);
+          const RNx = x(clampRnT),
+            RNy = y(clampRnW);
           const Dx = x(clampTd),
-            Dy = y(clampRaW);
+            Dy = y(clampRnW);
 
           chart3.line(RAx, RAy, ADPx, ADPy, "#3a5a62", "3,3");
           chart3.line(CCx, CCy, SAx, SAy, "#e8a33d");
-          chart3.line(RAx, RAy, Dx, Dy, "#e0556b", "2,2");
+          chart3.line(SAx, SAy, RNx, RNy, "#7fd1ae", "3,3");
+          chart3.line(RNx, RNy, Dx, Dy, "#e0556b", "2,2");
 
           chart3.point(
             RAx,
@@ -1264,13 +1355,22 @@
             `${tSa.toFixed(1)}°C, ${rhSa.toFixed(0)}%`,
           );
           chart3.point(
+            RNx,
+            RNy,
+            "#c58bd6",
+            "R' 現場(混合後)",
+            RNx > W / 2 ? -70 : 8,
+            16,
+            `${tRoomNew.toFixed(1)}°C, ${rhRoomNew.toFixed(0)}%`,
+          );
+          chart3.point(
             Dx,
             Dy,
             "#e0556b",
             "D 露點",
             Dx > 70 ? -38 : 8,
             30,
-            `${tDewRoom.toFixed(1)}°C`,
+            `${tDewRoomNew.toFixed(1)}°C`,
           );
         }
 
@@ -1290,6 +1390,7 @@
         linkRange(freqInput, freqRange, updateAhu);
         linkRange(coolPctInput, coolPctRange, updateAhu);
         linkRange(heatPctInput, heatPctRange, updateAhu);
+        roomMixInput.addEventListener("input", updateAhu);
         updateAhu();
 
         function setVal(numInput, rangeInput, val) {
@@ -1324,6 +1425,7 @@
             setVal(freqInput, freqRange, 50);
             setVal(coolPctInput, coolPctRange, 60);
             setVal(heatPctInput, heatPctRange, 10);
+            roomMixInput.value = 30;
             updateAhu();
           });
       })();
